@@ -4,6 +4,12 @@ Minimal JavaScript client for [tinysync](https://github.com/getflourish/tinysync
 
 Live updates via SSE. Optional IndexedDB persistence. No dependencies.
 
+## CDN
+
+```js
+import { SyncClient } from "https://cdn.jsdelivr.net/gh/getflourish/tinysync.js@main/index.js";
+```
+
 ## Usage
 
 ```js
