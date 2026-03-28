@@ -45,7 +45,9 @@ export class SyncClient {
     this.#url     = url.replace(/\/$/, '');
     this.#token   = token;
     this.#persist = persist;
-    this.#authUrl = authUrl ?? this.#url.replace(/\/[^/]+$/, '/auth.php');
+    this.#authUrl = authUrl ?? (new URL(this.#url).pathname.length > 1
+      ? this.#url.replace(/\/[^/]+$/, '/auth')  // has path: swap last segment
+      : this.#url + '/auth');                   // bare domain: append /auth
   }
 
   // ── Subscribe ─────────────────────────────────────────────────────────────
