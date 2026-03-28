@@ -211,14 +211,13 @@ Gracefully falls back to in-memory if IndexedDB is unavailable.
   </div>
 
   <form @submit.prevent="save">
-    <input v-model="draft.id" placeholder="ID (leave blank to generate)" />
     <input v-model="draft.data.text" placeholder="Text" />
     <button type="submit" :disabled="!connected">Save</button>
   </form>
 
   <ul v-if="items.length">
     <li v-for="item in items" :key="item.id">
-      <span @click="edit(item)">{{ item.id }} — {{ item.data.text }}</span>
+      <span @click="edit(item)">{{ item.id }} — <strong>{{ item.data.title }}</strong> {{ item.data.text }}</span>
       <button @click="remove(item.id)">Delete</button>
     </li>
   </ul>
@@ -236,7 +235,7 @@ Gracefully falls back to in-memory if IndexedDB is unavailable.
     data: {
       collection: "notes",
       connected: false,
-      draft: { id: "", data: { text: "" } },
+      draft: { id: "", data: { title: "", text: "" } },
       endpoint: localStorage.getItem("ts_endpoint") || "",
       records: {},
       sync: null,

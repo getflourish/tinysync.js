@@ -94,14 +94,19 @@ export class SyncClient {
     const flat    = options.flat ?? this.#collectionOpts[collection]?.flat ?? false;
     const records = Array.isArray(record) ? record : [record];
     const payload = flat ? records.map(r => this.#wrapRecord(r)) : records;
+    // Optimistic update: merge into local cache and emit before server round-trip.
+    this.#mergePushIntoStore(collection, payload, flat, null);
     const res = await this.#fetch('POST', collection, payload);
-    // Merge into local cache immediately. If this record is edit-locked, SSE deltas
-    // are skipped — without this merge the next #emit would still show stale data.
-    this.#mergePushIntoStore(collection, payload, flat, res);
+    // Update revision cursor from server response so SSE delta tracking stays accurate.
+    if (res?.rev) this.#revisions[collection] = Math.max(this.#revisions[collection] ?? 0, res.rev);
     return res;
   }
 
   async delete(collection, id) {
+    // Optimistic: remove from local cache and emit before server round-trip.
+    this.#store[collection]?.delete(id);
+    if (this.#persist) this.#idbPersist(collection, [], [id], this.#revisions[collection]);
+    this.#emit(collection);
     return this.#fetch('DELETE', `${collection}&id=${encodeURIComponent(id)}`);
   }
 
