@@ -26,6 +26,7 @@
 export class SyncClient {
   #url;
   #token;
+  #authUrl;
   #persist;
   #revisions      = {};  // collection → last known rev
   #sources        = {};  // collection → EventSource
@@ -36,11 +37,15 @@ export class SyncClient {
   #initPromises   = {};  // collection → Promise (IDB load in progress)
   /** Record IDs currently being edited — incoming SSE deltas for these IDs are skipped. */
   #editing        = new Set();
+  /** Short-lived session token used in SSE URLs. */
+  #session        = null;  // { token, expiresAt }
+  #refreshTimer   = null;
 
-  constructor(url, token, { persist = false } = {}) {
+  constructor(url, token, { persist = false, authUrl = null } = {}) {
     this.#url     = url.replace(/\/$/, '');
     this.#token   = token;
     this.#persist = persist;
+    this.#authUrl = authUrl ?? this.#url.replace(/\/[^/]+$/, '/auth.php');
   }
 
   // ── Subscribe ─────────────────────────────────────────────────────────────
@@ -195,14 +200,47 @@ export class SyncClient {
     return this.#initPromises[collection];
   }
 
+  // ── Session token ─────────────────────────────────────────────────────────
+
+  async #getSessionToken() {
+    const buffer = 60_000; // refresh 1 min before expiry
+    if (this.#session && this.#session.expiresAt - Date.now() > buffer) {
+      return this.#session.token;
+    }
+    const res = await fetch(this.#authUrl, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${this.#token}` },
+    });
+    if (!res.ok) throw new Error(`Auth error ${res.status}`);
+    const { session_token, expires_at } = await res.json();
+    this.#session = { token: session_token, expiresAt: expires_at };
+    this.#scheduleRefresh();
+    return this.#session.token;
+  }
+
+  #scheduleRefresh() {
+    clearTimeout(this.#refreshTimer);
+    const buffer = 60_000;
+    const delay  = this.#session.expiresAt - Date.now() - buffer;
+    this.#refreshTimer = setTimeout(async () => {
+      await this.#getSessionToken();
+      // Reopen active SSE connections with the new session token
+      for (const collection of Object.keys(this.#sources)) {
+        this.#closeSSE(collection);
+        if (this.#handlers[collection]?.size > 0) this.#openSSE(collection);
+      }
+    }, Math.max(delay, 0));
+  }
+
   // ── SSE ───────────────────────────────────────────────────────────────────
 
-  #openSSE(collection) {
-    const flat = this.#collectionOpts[collection]?.flat ?? false;
-    const rev  = this.#revisions[collection] ?? 0;
-    const url  = `${this.#url}?collection=${collection}&sse=1&since=${rev}&token=${this.#token}`
-               + (flat ? '&flat=1' : '');
-    const es   = new EventSource(url);
+  async #openSSE(collection) {
+    const flat  = this.#collectionOpts[collection]?.flat ?? false;
+    const rev   = this.#revisions[collection] ?? 0;
+    const token = await this.#getSessionToken();
+    const url   = `${this.#url}?collection=${collection}&sse=1&since=${rev}&token=${token}`
+                + (flat ? '&flat=1' : '');
+    const es    = new EventSource(url);
 
     es.addEventListener('connected', (e) => {
       const { rev } = JSON.parse(e.data);
