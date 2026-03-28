@@ -126,7 +126,7 @@ On each page load, the client restores the cached records and revision cursor fr
 
 Gracefully falls back to in-memory if IndexedDB is unavailable.
 
-## Vue 2
+## Vue 2 (view-only)
 
 ```html
 <!DOCTYPE html>
@@ -171,10 +171,10 @@ Gracefully falls back to in-memory if IndexedDB is unavailable.
     el: "#app",
     data: {
       collection: "notes",
-      endpoint: "",
-      token: "",
       connected: false,
+      endpoint: "",
       records: {},
+      token: "",
       unsub: null,
     },
     computed: {
@@ -190,6 +190,88 @@ Gracefully falls back to in-memory if IndexedDB is unavailable.
           this.records = records;
         });
         this.connected = true;
+      },
+    },
+  });
+})();
+```
+
+## Vue 2 with CRUD
+
+```html
+<div id="app">
+  <div class="config">
+    Sync
+    <input v-model="collection" placeholder="Collection" />
+    from
+    <input v-model="endpoint" placeholder="Endpoint" />
+    with
+    <input v-model="token" placeholder="Access Token" type="password" />
+    <button @click="connect" :disabled="connected">Connect</button>
+  </div>
+
+  <form @submit.prevent="save">
+    <input v-model="draft.id" placeholder="ID (leave blank to generate)" />
+    <input v-model="draft.data.text" placeholder="Text" />
+    <button type="submit" :disabled="!connected">Save</button>
+  </form>
+
+  <ul v-if="items.length">
+    <li v-for="item in items" :key="item.id">
+      <span @click="edit(item)">{{ item.id }} — {{ item.data.text }}</span>
+      <button @click="remove(item.id)">Delete</button>
+    </li>
+  </ul>
+  <p v-else-if="connected">No records yet.</p>
+</div>
+```
+
+```js
+(async () => {
+  const { SyncClient } =
+    await import("https://cdn.jsdelivr.net/gh/getflourish/tinysync.js@main/index.js");
+
+  new Vue({
+    el: "#app",
+    data: {
+      collection: "notes",
+      connected: false,
+      draft: { id: "", data: { text: "" } },
+      endpoint: localStorage.getItem("ts_endpoint") || "",
+      records: {},
+      sync: null,
+      token: localStorage.getItem("ts_token") || "",
+      unsub: null,
+    },
+    computed: {
+      items() {
+        return Object.values(this.records);
+      },
+    },
+    methods: {
+      connect() {
+        localStorage.setItem("ts_endpoint", this.endpoint);
+        localStorage.setItem("ts_token", this.token);
+        if (this.unsub) this.unsub();
+        this.sync = new SyncClient(this.endpoint, this.token);
+        this.unsub = this.sync.subscribe(this.collection, (records) => {
+          this.records = records;
+        });
+        this.connected = true;
+      },
+      edit(item) {
+        this.draft = JSON.parse(JSON.stringify(item));
+      },
+      async save() {
+        const record = {
+          id: this.draft.id || crypto.randomUUID(),
+          data: { ...this.draft.data },
+        };
+        await this.sync.push(this.collection, record);
+        this.draft = { id: "", data: { text: "" } };
+      },
+      async remove(id) {
+        await this.sync.delete(this.collection, id);
       },
     },
   });
