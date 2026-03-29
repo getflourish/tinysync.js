@@ -10,6 +10,8 @@
  *
  * Usage with IndexedDB persistence (survives page reloads, only syncs deltas):
  *   const sync = new SyncClient('https://you.com/sync.php', 'your-token', { persist: true });
+ *   // Default IDB name is tinysync_<hostname>, e.g. tinysync_sync.getflourish.com
+ *   // Override: { persist: true, idbName: 'tinysync_custom' }
  *
  * Usage (flat mode — for apps with a flat SQL schema):
  *   const unsub = sync.subscribe('todos', (records) => render(records), { flat: true });
@@ -40,14 +42,23 @@ export class SyncClient {
   /** Short-lived session token used in SSE URLs. */
   #session        = null;  // { token, expiresAt }
   #refreshTimer   = null;
+  /** IndexedDB name — one per sync host (or explicit idbName) so backends stay isolated. */
+  #idbName;
 
-  constructor(url, token, { persist = false, authUrl = null } = {}) {
+  constructor(url, token, { persist = false, authUrl = null, idbName = null } = {}) {
     this.#url     = url.replace(/\/$/, '');
     this.#token   = token;
     this.#persist = persist;
     this.#authUrl = authUrl ?? (new URL(this.#url).pathname.length > 1
       ? this.#url.replace(/\/[^/]+$/, '/auth')  // has path: swap last segment
       : this.#url + '/auth');                   // bare domain: append /auth
+    let host = 'local';
+    try {
+      host = new URL(this.#url).hostname || host;
+    } catch {
+      /* invalid URL — #idbName still valid for explicit idbName */
+    }
+    this.#idbName = idbName ?? `tinysync_${host}`;
   }
 
   // ── Subscribe ─────────────────────────────────────────────────────────────
@@ -349,14 +360,14 @@ export class SyncClient {
 
   // ── IndexedDB ─────────────────────────────────────────────────────────────
   //
-  // Schema (DB name: sync_cache, version 1):
+  // Schema (DB name: tinysync_<hostname> by default, or constructor idbName; version 1):
   //   records   — keyPath: ['collection', 'id'], index: by_collection → collection
   //   revisions — keyPath: 'collection'
 
   async #openDB() {
     if (this.#db) return this.#db;
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open('sync_cache', 1);
+      const req = indexedDB.open(this.#idbName, 1);
       req.onupgradeneeded = ({ target: { result: db } }) => {
         if (!db.objectStoreNames.contains('records')) {
           const s = db.createObjectStore('records', { keyPath: ['collection', 'id'] });
