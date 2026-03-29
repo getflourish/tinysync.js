@@ -7,7 +7,7 @@ Live updates via SSE. Optional IndexedDB persistence. No dependencies.
 ## CDN
 
 ```js
-import { SyncClient } from "https://cdn.jsdelivr.net/gh/getflourish/tinysync.js@main/index.js";
+import { SyncClient } from "https://cdn.jsdelivr.net/gh/getflourish/tinysync.js@latest/index.js";
 ```
 
 ## Usage
@@ -223,7 +223,10 @@ Gracefully falls back to in-memory if IndexedDB is unavailable.
 
   <ul v-if="items.length">
     <li v-for="item in items" :key="item.id">
-      <span @click="edit(item)">{{ item.id }} — <strong>{{ item.data.title }}</strong> {{ item.data.text }}</span>
+      <span @click="edit(item)"
+        >{{ item.id }} — <strong>{{ item.data.title }}</strong> {{
+        item.data.text }}</span
+      >
       <button @click="remove(item.id)">Delete</button>
     </li>
   </ul>
