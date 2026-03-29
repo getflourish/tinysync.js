@@ -113,6 +113,15 @@ export class SyncClient {
     return res;
   }
 
+  async listCollections() {
+    const res = await fetch(`${this.#url}?collections`, {
+      headers: { 'Authorization': `Bearer ${this.#token}` },
+    });
+    if (!res.ok) throw new Error(`Sync error ${res.status}`);
+    const { collections } = await res.json();
+    return collections;
+  }
+
   async delete(collection, id) {
     // Optimistic: remove from local cache and emit before server round-trip.
     this.#store[collection]?.delete(id);
